@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import allure
 from playwright.sync_api import Page
-
-from apps.myntra.locators.home_page_locators import HomePageLocators
 from pwpf.core.app_config import AppConfig
 from pwpf.core.base_page import BasePage
+
+from apps.myntra.locators.home_page_locators import HomePageLocators
 
 
 class HomePage(BasePage):

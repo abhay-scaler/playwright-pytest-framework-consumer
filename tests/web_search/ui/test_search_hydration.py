@@ -13,11 +13,11 @@ from dataclasses import replace
 import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import expect
+from pwpf.config.paths import project_root
+from pwpf.core.app_config import load_app_config
 
 from apps.web_search.locators.home_page_locators import HomePageLocators
 from apps.web_search.pages.home_page import HomePage
-from pwpf.config.paths import project_root
-from pwpf.core.app_config import load_app_config
 
 FIXTURE = project_root() / "apps" / "web_search" / "testdata" / "hydration_fixture.html"
 
