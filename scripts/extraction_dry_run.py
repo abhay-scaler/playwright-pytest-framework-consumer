@@ -4,27 +4,37 @@
 install and work for a *synthetic* consumer it generates itself. This script
 asks the question the extraction actually turns on - can the real consumer code
 in this repository, `apps/` and `tests/<app>/`, run against the installed
-distribution with the framework source checkout nowhere in sight?
+distribution, with no framework source anywhere in sight?
 
     python scripts/extraction_dry_run.py [--keep]
+    python scripts/extraction_dry_run.py --framework dist/pwpf-0.1.0-py3-none-any.whl
 
-It builds a wheel from the current source, installs it into a clean virtual
-environment, copies the consumer-owned half of this repository into a temporary
-project - without `pwpf/`, without the root `conftest.py`, without the
-framework's own self-tests - and runs that project from there. Plugin discovery
-therefore has to come from the `pytest11` entry point, and `import pwpf` has to
-resolve to site-packages or the run is a failure, not a pass.
+By default it installs **the requirement this repository actually depends on**,
+read out of `requirements.in` - the framework's own repository at a pinned tag -
+so what the dry run exercises is the pin CI installs rather than something
+built on the side. `--framework` overrides it with any pip requirement: a local
+wheel, an editable checkout, another tag. Before extraction this script built a
+wheel from `pwpf/` in this repository; there is no `pwpf/` here to build now,
+which is the whole point.
+
+It then copies the consumer-owned half of this repository into a temporary
+project and runs it from there. Plugin discovery has to come from the
+`pytest11` entry point, and `import pwpf` has to resolve to the environment's
+site-packages or the run is a failure, not a pass - checked inside the consumer
+process, from its own working directory, because `''` on `sys.path` means a
+module can be imported from the current directory and look installed.
 
 Exit status is 0 when every check passes and 1 otherwise; each check prints its
 own line. Nothing in the repository is modified: the only writes are to a
-temporary directory, plus the `build/`-style droppings the wheel build leaves
-behind, which are removed again unless they were already there.
+temporary directory.
 
 It also tests the *dependency contract*, not just the code: the consumer
 environment is built from the distribution's own extras (`[ai,report]`) plus the
 one dependency that is genuinely the consumer's (`pytest-xdist`, for `-n auto`),
 and a second, base-only environment proves the extras are load-bearing by being
-rejected by this repository's `pytest.ini`.
+rejected by this repository's `pytest.ini`. The extras are applied to whatever
+requirement is in use, so the base-only environment is the same artifact
+without them.
 
 What it deliberately does not do: publish anything, create a repository, change
 where this project gets its framework from, or run the live-site `production`
@@ -116,30 +126,53 @@ def run(
         )
 
 
-def build_wheel(workdir: Path) -> Path:
-    wheel_dir = workdir / "wheel"
-    pre_existing = {p for p in (REPO_ROOT / "build", *REPO_ROOT.glob("*.egg-info")) if p.exists()}
-    proc = subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(wheel_dir)]
-        + [str(REPO_ROOT)],
-        capture_output=True,
-        text=True,
-        timeout=INSTALL_TIMEOUT,
+DISTRIBUTION = "playwright-pytest-framework"
+REQUIREMENTS_IN = REPO_ROOT / "requirements.in"
+
+
+def declared_framework_requirement() -> str:
+    """The framework requirement as `requirements.in` declares it.
+
+    Read rather than reconstructed: a dry run that installed a requirement
+    assembled here would prove something about this script instead of about
+    what CI installs. Continuation lines are joined, comments ignored.
+    """
+    text = REQUIREMENTS_IN.read_text(encoding="utf-8")
+    for raw in text.replace("\\\n", " ").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if line.lower().startswith(DISTRIBUTION):
+            return line
+    raise SystemExit(
+        f"no {DISTRIBUTION} requirement found in {REQUIREMENTS_IN}. "
+        "This project depends on the framework as an installed distribution; "
+        "declare it there, or pass --framework."
     )
-    if proc.returncode != 0:
-        raise SystemExit(f"wheel build failed:\n{proc.stdout}\n{proc.stderr}")
-    wheels = sorted(wheel_dir.glob("*.whl"))
-    if not wheels:
-        raise SystemExit("wheel build produced no .whl")
-    for leftover in (REPO_ROOT / "build", *REPO_ROOT.glob("*.egg-info")):
-        if leftover.exists() and leftover not in pre_existing:
-            shutil.rmtree(leftover, ignore_errors=True)
-    return wheels[0]
+
+
+def with_extras(requirement: str, extras: str) -> str:
+    """`requirement` carrying exactly `extras` - none when it is empty.
+
+    Two shapes have to work. A PEP 508 direct reference puts the extras on the
+    *name*, before the `@`: `pkg[ai,report] @ git+https://...@v0.1.0`. A plain
+    path or wheel takes them appended: `dist/pkg-0.1.0.whl[ai,report]`.
+    Whatever extras the requirement already carries are replaced, which is what
+    lets one requirement be installed twice - once with the extras and once
+    without - to show they are load-bearing.
+    """
+    suffix = f"[{extras}]" if extras else ""
+    if " @ " in requirement:
+        name, _, url = requirement.partition(" @ ")
+        name = name.split("[", 1)[0].strip()
+        return f"{name}{suffix} @ {url.strip()}"
+    base = str(requirement)
+    if base.endswith("]") and "[" in base:
+        base = base[: base.rindex("[")]
+    return f"{base}{suffix}"
 
 
 def make_venv(
     workdir: Path,
-    wheel: Path,
+    framework: str,
     *,
     name: str = "venv",
     extras: str = FRAMEWORK_EXTRAS,
@@ -153,7 +186,7 @@ def make_venv(
         [sys.executable, "-m", "venv", str(venv_dir)], check=True, timeout=INSTALL_TIMEOUT
     )
     python = venv_dir / "bin" / "python"
-    requirement = f"{wheel}[{extras}]" if extras else str(wheel)
+    requirement = with_extras(framework, extras)
     proc = subprocess.run(
         [str(python), "-m", "pip", "install", "--quiet", requirement] + list(consumer_dependencies),
         capture_output=True,
@@ -161,7 +194,7 @@ def make_venv(
         timeout=INSTALL_TIMEOUT,
     )
     if proc.returncode != 0:
-        raise SystemExit(f"wheel install failed ({requirement}):\n{proc.stdout}\n{proc.stderr}")
+        raise SystemExit(f"install failed ({requirement}):\n{proc.stdout}\n{proc.stderr}")
     return venv_dir
 
 
@@ -223,14 +256,21 @@ def main(argv: list[str] | None = None) -> int:
         help="skip installing Chromium into the throwaway environment; the smoke selection "
         "then only collects, and the run says so instead of claiming it executed",
     )
+    parser.add_argument(
+        "--framework",
+        metavar="REQUIREMENT",
+        default=None,
+        help="the framework requirement to install: a pinned reference, a local wheel, an "
+        "editable path. Defaults to the one requirements.in declares, which is what CI installs.",
+    )
     args = parser.parse_args(argv)
 
+    framework = args.framework or declared_framework_requirement()
     workdir = Path(tempfile.mkdtemp(prefix="pwpf-extraction-dry-run-"))
     print(f"workspace: {workdir}")
+    print(f"framework: {framework}")
     try:
-        wheel = build_wheel(workdir)
-        print(f"built:     {wheel.name}")
-        venv_dir = make_venv(workdir, wheel)
+        venv_dir = make_venv(workdir, framework)
         python = venv_dir / "bin" / "python"
         consumer = make_consumer(workdir)
         site_packages = next((venv_dir / "lib").glob("python*/site-packages"))
@@ -255,7 +295,10 @@ def main(argv: list[str] | None = None) -> int:
 
         print("\nchecks:")
 
-        # 1. The consumer project holds no framework code at all.
+        # 1. The consumer project holds no framework code at all. Since
+        #    extraction this project has none to copy, so the check has gone
+        #    from "the copy left it out" to "there is none anywhere" - stronger,
+        #    and worth keeping for the day someone vendors a copy back in.
         check(
             not (consumer / "pwpf").exists() and not (consumer / "conftest.py").exists(),
             "the consumer project contains no pwpf/ and no root conftest.py",
@@ -282,14 +325,18 @@ def main(argv: list[str] | None = None) -> int:
         imported_from = payload.get("file", "")
         check(
             proc.returncode == 0 and imported_from.startswith(str(site_packages)),
-            "pwpf is imported from the installed wheel, not this checkout",
+            "pwpf is imported from the installed distribution, not from this project",
             f"{imported_from}\n{proc.stderr}",
         )
+        # `''` on sys.path means the consumer's own working directory can shadow
+        # an installed package, so this checks for *this project* on the path -
+        # before extraction it held pwpf/ and that was the whole risk; it no
+        # longer does, and a copy appearing there would be just as wrong.
         on_path = [p for p in payload.get("path", []) if p and Path(p).resolve() == REPO_ROOT]
         check(
             not on_path and "PYTHONPATH" not in env,
-            "the framework checkout is on neither sys.path nor PYTHONPATH",
-            f"sys.path entries matching the checkout: {on_path}",
+            "this project is on neither sys.path nor PYTHONPATH in the consumer",
+            f"sys.path entries matching this project: {on_path}",
         )
 
         # 3. The plugin arrives through its entry point, markers included.
@@ -406,11 +453,14 @@ def main(argv: list[str] | None = None) -> int:
             "no artifacts are written into the installed package",
             str(sorted(artifact_dirs(site_packages / "pwpf"))),
         )
+        # Only the half that can still fail. The other half compared
+        # `artifact_dirs(REPO_ROOT / "pwpf")` to the empty set, which a missing
+        # directory satisfies for free now that the framework lives elsewhere -
+        # a check that cannot fail reads like coverage it is not.
         check(
-            artifact_dirs(REPO_ROOT / "pwpf") == set()
-            and artifact_dirs(REPO_ROOT) == before_checkout,
-            "no artifacts appeared in the framework checkout",
-            str(sorted(artifact_dirs(REPO_ROOT / "pwpf"))),
+            artifact_dirs(REPO_ROOT) == before_checkout,
+            "no artifacts appeared in this project while the consumer ran",
+            str(sorted(artifact_dirs(REPO_ROOT) - before_checkout)),
         )
 
         # 8. The AI toolkit's validator, run as a consumer would run it: over the
@@ -434,7 +484,9 @@ def main(argv: list[str] | None = None) -> int:
             "the pytest-html integration engaged under the [report] extra",
             str(sorted(p.name for p in (consumer / "reports").iterdir())),
         )
-        base_venv = make_venv(workdir, wheel, name="venv-base", extras="", consumer_dependencies=())
+        base_venv = make_venv(
+            workdir, framework, name="venv-base", extras="", consumer_dependencies=()
+        )
         proc = run(
             [str(base_venv / "bin" / "python"), "-m", "pytest", "--collect-only", "-q"],
             consumer,
