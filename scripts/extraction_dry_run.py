@@ -378,13 +378,17 @@ def main(argv: list[str] | None = None) -> int:
         # 5. The blocking smoke selection actually runs, against the installed
         #    plugin, with the live-site tests excluded exactly as CI excludes
         #    them.
+        #
+        #    Through the `pytest` console script, not `python -m pytest`, and
+        #    the difference is not cosmetic: `-m` puts the working directory on
+        #    sys.path, so a consumer whose own packages are only importable
+        #    *because* of that passes here and fails in CI, which runs the
+        #    script. This check is the one that has to reproduce CI exactly.
         before_package = artifact_dirs(site_packages / "pwpf") | artifact_dirs(site_packages)
         before_checkout = artifact_dirs(REPO_ROOT)
         proc = run(
             [
-                str(python),
-                "-m",
-                "pytest",
+                str(venv_dir / "bin" / "pytest"),
                 "-m",
                 "smoke and not production and not quarantined",
                 "-p",
