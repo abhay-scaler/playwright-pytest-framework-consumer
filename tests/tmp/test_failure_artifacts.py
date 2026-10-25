@@ -1,7 +1,7 @@
 import pytest
+from pwpf.core.app_config import load_app_config
 
 from apps.sample_app.pages.sample_app_page import SampleAppPage
-from pwpf.core.app_config import load_app_config
 
 
 @pytest.mark.skip(

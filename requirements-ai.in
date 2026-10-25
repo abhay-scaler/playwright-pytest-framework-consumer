@@ -1,12 +1,20 @@
-# Dependencies for the AI test engineering toolkit's own validation command
-# (python -m ai_testing.validate_catalog). Deliberately separate from
-# requirements.in: every CI job installs the test-runtime lock
-# (requirements.txt), so anything added there is installed by the lint job and
-# the nightly cross-browser sweep alike. Nothing in the browser test runtime
-# imports these, and no test requires them to run - the catalog self-tests skip
-# when they are absent.
+# The scenario-catalog validator, for the Scenario Catalog CI job and for
+# running `pwpf-validate-catalog` by hand. Regenerate the pinned lock with:
+#   pip-compile -c requirements.txt --output-file=requirements-ai.txt --strip-extras requirements-ai.in
 #
-# Regenerate the pinned lock with the same tool the test-runtime lock uses:
-#   pip-compile --no-index --output-file=requirements-ai.txt --strip-extras requirements-ai.in
-pyyaml>=6.0
-jsonschema>=4.21
+# The `-c requirements.txt` is load-bearing. This lock now resolves the
+# framework and therefore its whole dependency set, and compiled on its own it
+# picked newer versions of playwright, allure-pytest and pytest-rerunfailures
+# than the test-runtime lock - two locks disagreeing about the framework's
+# dependencies, for no reason. Constraining it to the test-runtime lock keeps
+# the two in step, so regenerate requirements.txt first.
+#
+# The validator is framework code (pwpf/ai_testing/validate_catalog.py) that
+# operates on this project's data: it reads this repository's pytest.ini,
+# apps/*/scenarios/ and tests/ from the resolved project root. So the
+# dependency is the framework with its `ai` extra, which carries the PyYAML and
+# jsonschema the validator needs, at the same pinned tag requirements.in uses.
+#
+# Kept separate from requirements.txt for the reason it always was: the catalog
+# job runs no pytest and no browser, so it installs this file alone.
+playwright-pytest-framework[ai] @ git+https://github.com/abhay-scaler/playwright-pytest-framework@v0.1.0

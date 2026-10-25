@@ -1,5 +1,11 @@
 # AI test engineering toolkit
 
+> **Where the framework lives.** Paths of the form `pwpf/...` in this document and in the prompts
+> refer to the installed [playwright-pytest-framework](https://github.com/abhay-scaler/playwright-pytest-framework) distribution, pinned in
+> `requirements.in` - not to a directory in this repository. Read them as module references
+> (`pwpf/core/app_config.py` is `pwpf.core.app_config`); any line numbers are from the pinned tag.
+> Changing framework behaviour means a change in *that* repository and a new pin here.
+
 Version-controlled prompts, templates and conventions for using a coding assistant to help
 design and implement tests in this framework. Everything here is **plain Markdown and YAML**:
 there is no CLI, no runtime, no LLM dependency, and nothing in this directory is imported by a
@@ -39,11 +45,12 @@ nonsense.
 
 Templates: [feature_brief.md](templates/feature_brief.md),
 [scenario_template.yaml](templates/scenario_template.yaml). Schema:
-[scenario.schema.json](../pwpf/ai_testing/schemas/scenario.schema.json), validated by
-[validate_catalog.py](../pwpf/ai_testing/validate_catalog.py):
+[scenario.schema.json](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/pwpf/ai_testing/schemas/scenario.schema.json), validated by
+[validate_catalog.py](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/pwpf/ai_testing/validate_catalog.py)
+(both in the framework repository, at the `v0.1.0` tag this project pins):
 
 ```bash
-pip install -r ../requirements-ai.txt     # once; kept out of the test-runtime lock
+pip install -r ../requirements.txt        # the framework's [ai] extra comes with it
 python -m pwpf.ai_testing.validate_catalog     # schema, lifecycle rules, scenario-to-test mappings
 ```
 
@@ -75,8 +82,9 @@ Every prompt inherits these. They are repeated in no prompt; prompts reference
    the DOM or a response. What it *should* do comes from the feature brief or a human. Never
    derive an expected business result from the application's current behaviour alone.
 7. **Respect the layers.** `tests/<app>/` asserts, `apps/<app>/pages/` acts,
-   `apps/<app>/locators/` holds selectors as data, `pwpf/core/` is shared and app-agnostic.
-   Changes to `pwpf/`, `pytest.ini` or the CI workflow are shared-framework changes: propose
+   `apps/<app>/locators/` holds selectors as data, the framework's `pwpf.core` is shared and
+   app-agnostic. Changes to the framework, `pytest.ini` or the CI workflow are shared changes:
+   propose
    them separately, with a reason, and never as a side effect of adding a test.
 8. **Production safety.** The live production target (`myntra`) is for supervised, explicitly
    authorized local exploration only. Never write or run checkout, payment, order-placement or
@@ -95,13 +103,13 @@ Every prompt inherits these. They are repeated in no prompt; prompts reference
 Read from the source on this branch. If one of these disagrees with the code, the code wins and
 this table needs fixing.
 
-**Fixtures** — plugin [pwpf/plugin.py](../pwpf/plugin.py): `playwright_context` (session), `browser`
+**Fixtures** — from the installed plugin, `pwpf.plugin`: `playwright_context` (session), `browser`
 (session), `browser_context_args` (function), `context` (function), `page` (function), plus an
 autouse Allure labeller. Per application: `app_config` (session), defined in
 `tests/<app>/conftest.py` as `load_app_config("<app>")` and nowhere else. A test that needs a
 browser requests `page`; one that does not never starts a browser.
 
-**`BasePage`** — [pwpf/core/base_page.py](../pwpf/core/base_page.py), the only shared page-object base:
+**`BasePage`** — `pwpf.core.base_page`, the only shared page-object base:
 `goto(url, wait_until="load")`, `wait_for_url(url, timeout)`, `click(selector, timeout)`,
 `click_role_link(name, timeout)`, `click_role_button(name, timeout)`, `fill(selector, value)`,
 `get_text(selector)`, `is_visible(selector, timeout)` (polls until visible, unlike Playwright's
@@ -109,7 +117,7 @@ own `is_visible`), `take_screenshot(name)`, `expect_title(title, timeout)`,
 `dismiss_if_visible(selector, timeout)`. It is constructed as `BasePage(page, config)`; `page`
 objects for real applications redeclare `config: AppConfig` to make it non-optional.
 
-**`AppConfig`** — [pwpf/core/app_config.py](../pwpf/core/app_config.py): fields `app_name`, `environment`,
+**`AppConfig`** — `pwpf.core.app_config`: fields `app_name`, `environment`,
 `base_url`, `action_timeout`, `retry_count`, `ignore_https_errors`, `secrets`, `extra`, and the
 method `secret(name)`. Loaded from `apps/<app>/config/<ENVIRONMENT>.json`, `ENVIRONMENT`
 defaulting to `local`. **Only** `base_url`, `action_timeout`, `retry_count`,
@@ -118,11 +126,11 @@ defaulting to `local`. **Only** `base_url`, `action_timeout`, `retry_count`,
 a new key against `_KNOWN_KEYS` (`pwpf/core/app_config.py:12`).
 
 **API calls** — `api_request_context(base_url, timeout, config)`, a context manager in
-[pwpf/core/api_client.py](../pwpf/core/api_client.py). It shares no cookies with the browser fixtures.
+`pwpf.core.api_client`. It shares no cookies with the browser fixtures.
 
 **Helpers** — `take_screenshot(page, name)` and `read_text_file(path)` in
-[pwpf/utils/helpers.py](../pwpf/utils/helpers.py); `get_logger(__name__)` in
-[pwpf/utils/logger.py](../pwpf/utils/logger.py).
+`pwpf.utils.helpers`; `get_logger(__name__)` in
+`pwpf.utils.logger`.
 
 **Markers** — registered in [pytest.ini](../pytest.ini): `smoke`, `ui`, `api`, `regression`,
 `production`, `scenario(id)`, and `app(name)` which the plugin applies automatically from
@@ -158,7 +166,8 @@ there is installed by the lint job and the nightly cross-browser sweep alike.
 
 The catalog validator's own two dependencies (PyYAML, jsonschema) therefore live in
 [requirements-ai.in](../requirements-ai.in) and the pinned
-[requirements-ai.txt](../requirements-ai.txt), installed only by CI's `Scenario Catalog` job
+[requirements-ai.txt](../requirements-ai.txt) - the framework's `[ai]` extra at the project's
+pinned tag - installed by CI's `Scenario Catalog` job
 and by developers who run the validator. The validator imports them lazily, the catalog
 self-tests skip without them, and no test needs them to run. If automated
 orchestration is ever justified (see

@@ -1,5 +1,4 @@
 import pytest
-
 from pwpf.core.app_config import load_app_config
 
 

@@ -1,5 +1,4 @@
 import pytest
-
 from pwpf.core.api_client import api_request_context
 
 

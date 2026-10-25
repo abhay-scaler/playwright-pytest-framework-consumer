@@ -14,6 +14,12 @@ limited to three apps. Onboarding a new application is an additive process (see
 existing application code or to the framework layer; this was proven in practice when the third
 sample app was added with zero edits to the other two.
 
+The framework layer itself is no longer in this repository. It is a separate, installable
+distribution — [playwright-pytest-framework](https://github.com/abhay-scaler/playwright-pytest-framework) — pinned to an immutable tag in
+`requirements.in` and installed like any other dependency. What lives here is everything that is
+about *these* applications: their configuration, page objects, locators, tests, scenario catalog
+and CI policy.
+
 ## Table of Contents
 
 - [Key Features](#key-features)
@@ -33,48 +39,50 @@ sample app was added with zero edits to the other two.
 
 ## Key Features
 
+What this project is, and where each piece comes from. Items marked *framework* arrive with the
+installed distribution and are documented in [its README](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/docs/framework-readme-draft.md); the rest is this
+repository's.
+
 - **Multi-application architecture** — `apps/<app_name>/` owns its own configuration, page
-  objects, and locators; the framework layer (`pwpf/`) is entirely application-agnostic.
-- **Page Object Model** with a thin shared `BasePage` — page objects expose actions and locators
-  only; assertions stay in the tests, not in page objects.
-- **API testing with no second HTTP client** — `pwpf/core/api_client.py` wraps Playwright's own
-  `APIRequestContext`, so API tests share the same driver/dependency as UI tests instead of adding
-  `requests` or similar as a separate dependency. No browser is launched for API tests.
-- **Automatic failure diagnostics** — on a UI test failure, a full-page screenshot, the complete
-  Playwright trace, and a video are captured automatically, namespaced per application; all three
-  are discarded on success so only failures cost disk space.
-- **Passive browser error capture** — every page is watched for console errors (`type == "error"`)
-  and uncaught JavaScript exceptions via `page.on("console", ...)`/`page.on("pageerror", ...)`;
-  both are written to the framework logs and never affect a test's pass/fail outcome.
-- **Worker-aware logging** — under parallel execution (`pytest-xdist`), each worker writes to its
-  own log file (`logs/<worker>/framework.log`) instead of one interleaved, unattributable file.
-- **Allure reporting** with `application`, `browser`, and `environment` labels on every test, plus
-  automatic cleanup of stale results from previous runs at the start of each session (so `allure
-  serve` always reflects only the current run).
-- **Allure step reporting** on the reusable page-object action primitives (navigation, click,
-  fill, screenshot, title verification) — business-visible actions show up as readable steps,
-  nested under each page-object method that calls them; low-level reads/checks are deliberately
-  left uninstrumented to keep the report readable.
-- **No hard waits and no fragile selectors** — zero use of `time.sleep()` anywhere in the
-  codebase; all waits are Playwright's own auto-retrying locators. Locator strategy is chosen
-  deliberately per application (stable CSS ids for a static fixture, a third party's documented
-  public CSS theming API, accessible-role locators elsewhere) rather than one default applied
-  blindly everywhere.
-- **Dependency locking** — `requirements.in` (loose, human-maintained) compiles to a fully-pinned
-  `requirements.txt`, so installs are reproducible across every machine and in CI instead of
-  silently drifting.
-- **Static analysis and secret scanning** — Ruff, Black, and mypy are configured and wired into
-  pre-commit and CI; `detect-secrets` runs as a pre-commit guardrail behind the framework's
-  secrets-by-reference configuration convention (see [Configuration](#configuration)).
-- **CI/CD** — a four-job GitHub Actions pipeline (lint/type-check, PR smoke, full regression,
-  nightly cross-browser) with both pip and the Playwright browser binary cached.
+  objects, and locators, and a matching `tests/<app_name>/` owns its tests. The framework infers
+  which application a test belongs to from that pairing and never holds a list of names.
+- **Page Object Model** with a thin shared `BasePage` (*framework*) — page objects expose actions
+  and locators only; assertions stay in the tests.
+- **API testing with no second HTTP client** (*framework*) — `pwpf.core.api_client` wraps
+  Playwright's own `APIRequestContext`, so API tests share the UI tests' driver instead of adding
+  `requests`. No browser is launched for them.
+- **Automatic failure diagnostics** (*framework*) — a screenshot, the full Playwright trace and a
+  video on UI-test failure, namespaced per application, all discarded on success.
+- **Passive browser error capture** (*framework*) — console errors and uncaught page exceptions
+  are logged and never change a test's outcome.
+- **Worker-aware logging** (*framework*) — one log file per `pytest-xdist` worker.
+- **Allure reporting** (*framework*) — `application`, `browser` and `environment` labels on every
+  test, plus `scenario(id)` labels from the catalog, with the previous run's stale results
+  cleared at session start.
+- **No hard waits and no fragile selectors** — zero `time.sleep()` anywhere; all waits are
+  Playwright's own auto-retrying locators. Locator strategy is chosen deliberately per
+  application rather than one default applied everywhere.
+- **An approved scenario catalog** — `apps/*/scenarios/*.yaml`, validated in CI against the
+  framework's JSON Schema, with traceability from scenario to test enforced by the validator.
+- **Policy enforced by tests, not by convention** — `tests/test_ci_production_exclusion.py` fails
+  if any CI invocation loses `-m "not production"`, and `tests/test_quarantine_policy.py` pins
+  which tests are quarantined. A marker is a label; what the command selects is what runs.
+- **A pinned framework** — the dependency names a tag, not a branch, so every install of this
+  project gets the same framework. `tests/test_extraction_dry_run.py` fails if that stops being
+  true.
+- **Dependency locking** — `requirements.in` (loose, human-maintained) compiles to a
+  fully-pinned `requirements.txt`.
+- **Static analysis and secret scanning** — Ruff, Black and mypy in pre-commit and CI;
+  `detect-secrets` as a pre-commit guardrail behind the framework's secrets-by-reference
+  convention (see [Configuration](#configuration)).
+- **CI/CD** — a six-job GitHub Actions pipeline with pip and the Playwright browser binary cached.
 
 ## Technology Stack
 
-The **Owner** column says who declares each tool: the framework distribution (`pyproject.toml`), or
-this consumer project (`requirements.in`, `pytest.ini`, `.pre-commit-config.yaml`). It is the
-boundary a future extraction cuts along, and it is already load-bearing — a consumer that installs
-the framework gets the first group automatically and must choose the second for itself.
+The **Owner** column says who declares each tool: the framework distribution, in its own
+`pyproject.toml`, or this project, in `requirements.in`, `pytest.ini` and
+`.pre-commit-config.yaml`. That boundary is now a repository boundary — everything marked
+*framework* arrives through one pinned dependency and is not declared here at all.
 
 | Category | Tool | Owner |
 |---|---|---|
@@ -89,31 +97,13 @@ the framework gets the first group automatically and must choose the second for 
 | Formatting | [Black](https://black.readthedocs.io/) | both |
 | Static typing | [mypy](https://mypy-lang.org/) (incremental, non-strict) | both |
 | Secret scanning | [detect-secrets](https://github.com/Yelp/detect-secrets) | consumer — this repository's pre-commit hook |
-| CI/CD | GitHub Actions | both — [the seven jobs and their owners](#continuous-integration) |
-| Language / runtime | Python 3.12 | framework — `requires-python = ">=3.12"` |
+| CI/CD | GitHub Actions | both — [the six jobs here](#continuous-integration), three more in the framework's own repository |
+| Language / runtime | Python 3.12 | this project pins one interpreter; the framework declares `requires-python = ">=3.12"` and tests 3.12 and 3.13 |
 
 ## Project Structure
 
-Two trees: the installable framework, and this repository's own project that consumes it. The
-boundary is where a future extraction would cut
-([docs/documentation-split-plan.md](docs/documentation-split-plan.md)).
-
-**The framework** (`playwright-pytest-framework`, importable as `pwpf`) — application-neutral:
-
-```
-pwpf/                       # the installable package (pip install .)
-  plugin.py                  #   the pytest plugin: fixtures, markers, artifacts, root
-  config/{paths,settings}.py #   consumer-root resolution and artifact locations
-  core/                      #   base_page, app_config, api_client
-  utils/                     #   logger, helpers, report_embedder, allure_cleanup
-  ai_testing/                #   catalog validator + the scenario JSON Schema (package data)
-
-pyproject.toml              # distribution metadata and dependencies, plus Ruff/Black/mypy config
-LICENSE                     # MIT, shipped in the wheel
-scripts/verify_installed_package.py   # builds the wheel and proves it installs and works
-```
-
-**The consumer project** — these applications, their tests, and this repository's policy:
+One tree now: this project. The framework is a dependency, and its source lives in
+[its own repository](https://github.com/abhay-scaler/playwright-pytest-framework).
 
 ```
 apps/<app_name>/            # everything specific to one application
@@ -128,76 +118,43 @@ tests/
     conftest.py                #   binds the app_config fixture to this app's name
   api/                         # application-agnostic API tests
   tmp/                         # a deliberately skipped manual-only diagnostic check
-  test_*.py                    # mostly tests of the framework itself; the two policy guards
-                               #   (production exclusion, quarantine) are this repository's
+  test_ci_production_exclusion.py   # the production-exclusion policy guard
+  test_quarantine_policy.py         # which tests are quarantined, and that they gate nothing
+  test_scenario_catalog.py          # this repository's catalog, and the live-site policy
+  test_doc_links.py                 # the documentation link and fragment gate
+  test_extraction_dry_run.py        # the framework pin, and the dry run's requirement handling
 
-conftest.py                   # one line: loads pwpf.plugin from this source tree
 pytest.ini                    # test discovery, markers, default CLI options
-requirements.in / .txt        # loose source and fully-pinned lock file
-requirements-ai.in / .txt     # scenario-validator deps only, kept out of the test runtime
-.github/workflows/ci.yml      # the seven CI jobs and their owners — see below
-DESIGN.md                     # full architecture, execution flow, and onboarding walkthrough
+pyproject.toml                # Ruff / Black / mypy configuration only — no packaging here
+requirements.in / .txt        # loose source and fully-pinned lock, including the framework pin
+requirements-ai.in / .txt     # the framework's `ai` extra, for the catalog job alone
+.github/workflows/ci.yml      # the six CI jobs
+DESIGN.md                     # this project's architecture, CI policy and onboarding walkthrough
 docs/                         # this repository's documentation, incl. the AI-testing workflow
 ai_testing/                   # its prompt library and templates (no code, no dependencies)
-scripts/extraction_dry_run.py # proves this project runs against the installed framework
+scripts/extraction_dry_run.py # proves this project runs against the pinned framework
 scripts/check_doc_links.py    # the documentation link and fragment gate
 ```
+
+There is **no `conftest.py` at the root**, and that is the point: pytest discovers the framework's
+plugin through its `pytest11` entry point, so the fixtures, markers and artifact handling arrive
+from the installed distribution with nothing to wire up here.
 
 Generated at runtime (all git-ignored): `reports/` (HTML + Allure results), `screenshots/`,
 `traces/`, `videos/` (failure artifacts, namespaced per application), `logs/` (per-worker log
 files). They are created when something is actually written, under the **project root** — not
-under the framework's own directory, and never as a side effect of importing a module. Under
+under the installed package's directory, and never as a side effect of importing a module. Under
 pytest the root is pytest's own `rootdir`; elsewhere set `PWPF_ROOT`, pass `--root` where a
-command supports it, or run from a directory at or below the one holding `pytest.ini`. The
-full precedence is in `pwpf/config/paths.py` and [DESIGN.md](DESIGN.md) §6.
-
-## Using the framework in another project
-
-The framework is an installable distribution with a pytest plugin entry point, so a
-consumer project needs no `conftest.py` to get the fixtures, the markers or the artifact
-handling:
-
-```bash
-pip install playwright-pytest-framework              # from a wheel, index or path
-pip install "playwright-pytest-framework[report]"    # plus the pytest-html report integration
-pip install "playwright-pytest-framework[ai]"        # plus the scenario-catalog validator
-python -m playwright install chromium                # browsers, once
-```
-
-Two things the base install deliberately leaves out, because the framework runs without them:
-
-- **`[report]`** — `pytest-html`. The plugin embeds each run's failure screenshots into the HTML
-  report named by `--html`; without the extra that step finds no report and says so, and nothing
-  else changes. A `pytest.ini` that passes `--html` needs the extra, since pytest rejects an
-  option no installed plugin defines before it collects anything.
-- **`pytest-xdist`** — the consumer's own dependency, not an extra here. Nothing in the framework
-  requires it; `-n auto` is a choice about how you run your suite, and the framework's
-  xdist-master guards behave the same whether it is installed or not.
-
-The consumer keeps its own layout — `pytest.ini`, `apps/<app>/`, `tests/<app>/` — and pytest
-discovers the plugin automatically through the `pytest11` entry point. Everything is resolved
-against *that* project: its applications, and its `screenshots/`, `reports/`, `logs/`,
-`traces/` and `videos/`, never the installed package's directory. The catalog validator is
-available as `pwpf-validate-catalog` or `python -m pwpf.ai_testing.validate_catalog`.
-
-`scripts/verify_installed_package.py` builds a wheel, installs it into a throwaway virtual
-environment and runs a generated consumer project against it, asserting exactly that.
+command supports it, or run from a directory at or below the one holding `pytest.ini`. The full
+precedence is in [the framework's README](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/docs/framework-readme-draft.md).
 
 ## Prerequisites
 
-- **Python 3.12+** — the framework declares `requires-python = ">=3.12"`, so pip will refuse to
-  install it on anything older. CI runs 3.12, and 3.12 is the only version this suite has run on.
-- pip
+- **Python 3.12** — what this project pins, in CI and locally. The framework declares
+  `requires-python = ">=3.12"` and its own CI exercises 3.12 and 3.13.
+- pip, and **git**: `requirements.txt` resolves the framework from its repository.
 
 ## Installation
-
-Two different things, and only the second is about this repository:
-
-- **Using the framework in another project** — `pip install playwright-pytest-framework`, plus the
-  extras you need. See [Using the framework in another project](#using-the-framework-in-another-project).
-- **Developing *this* project** — the rest of this section. It installs the pinned lock file, which
-  includes the framework's own dependencies plus this repository's tooling (xdist, detect-secrets,
-  the linters).
 
 ```bash
 python -m venv .venv
@@ -208,15 +165,26 @@ python -m playwright install chromium
 ```
 
 `requirements.txt` is a generated, fully-pinned lock file — install from it, don't hand-edit it.
-To change a dependency, edit `requirements.in` (the loose, human-maintained source) and
-regenerate:
+It carries the framework as a pinned reference to its own repository, so this step needs git and
+network access, and everything the framework itself needs (pytest, Playwright, allure-pytest,
+pytest-rerunfailures) arrives with it.
+
+To change a dependency, or to move to a new framework release, edit `requirements.in` (the loose,
+human-maintained source) and regenerate both locks — the second is constrained to the first so the
+two cannot disagree about the framework's dependencies:
 
 ```bash
 pip install pip-tools
-pip-compile requirements.in --output-file requirements.txt
+pip-compile --output-file=requirements.txt --strip-extras requirements.in
+pip-compile -c requirements.txt --output-file=requirements-ai.txt --strip-extras requirements-ai.in
 ```
 
-Commit both files together so installs stay reproducible across every machine and in CI.
+Commit the files together so installs stay reproducible. **Rolling the framework back** is a
+one-line change of the ref in `requirements.in` followed by that regeneration.
+
+For developing the framework itself, clone [its repository](https://github.com/abhay-scaler/playwright-pytest-framework) and install it editable
+alongside this one (`pip install -e ../playwright-pytest-framework`); that is a local override and
+must never be committed here.
 
 To install other browser engines (used by the nightly cross-browser CI job, or on demand
 locally):
@@ -227,21 +195,14 @@ python -m playwright install firefox webkit
 
 ## Configuration
 
-Two layers of configuration exist.
+The authoritative reference for both layers is [the framework's README](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/docs/framework-readme-draft.md): it defines
+the environment variables it reads and the `AppConfig` keys it accepts, and keeping a second copy
+of that table here is how a framework and its consumer start disagreeing about what
+`action_timeout` means. What follows is this project's side of it — one example, and the one key
+that is *ours*.
 
-**Framework-wide**, via environment variables (apply to every application/run):
-
-| Variable | Purpose | Default |
-|---|---|---|
-| `BROWSER` | Browser engine: `chromium`, `firefox`, `webkit` | `chromium` |
-| `HEADLESS` | Run headless (`true`/`false`) | `false` locally, `true` when `CI` is set |
-| `ENVIRONMENT` | Selects `apps/<app>/config/<ENVIRONMENT>.json` | `local` |
-| `PWPF_ROOT` | Project root, for entry points that are neither pytest nor able to pass one | unset |
-| `CI` | Auto-forces headless when set | unset |
-| `ACTION_TIMEOUT` | Framework-wide default action timeout (ms) | `10000` |
-| `RETRY_COUNT` | Framework-wide default rerun count | `0` |
-
-**Per-application**, via `apps/<app_name>/config/<environment>.json`:
+A per-application file, `apps/<app_name>/config/<environment>.json`, selected by `ENVIRONMENT`
+(default `local`):
 
 ```json
 {
@@ -251,35 +212,28 @@ Two layers of configuration exist.
   "ignore_https_errors": false,
   "secrets": {
     "api_key": "MY_APP_API_KEY"
-  }
+  },
+  "production_target": false
 }
 ```
 
-- `base_url`, `action_timeout`, `retry_count` — self-explanatory; `retry_count` becomes a
-  `pytest.mark.flaky(reruns=N)` override for that application's tests, applied automatically
-  based on the test's file location.
-- `ignore_https_errors` — optional, defaults to `true`; set `false` only if the application's
-  environment has a real certificate worth validating.
-- `secrets` — **never put an actual secret value here.** Map a logical name to the *name* of an
-  environment variable; the real value is read from the environment at runtime via
-  `AppConfig.secret("api_key")`. No app currently declares any secrets — none of the sample
+- `base_url`, `action_timeout`, `retry_count`, `ignore_https_errors`, `secrets` — framework keys;
+  see the reference above. **Never put an actual secret value in `secrets`**: map a logical name
+  to the *name* of an environment variable, and the value is read at runtime through
+  `AppConfig.secret("api_key")`. No application here declares any secrets — none of the sample
   applications require credentials.
-- `production_target` — optional, defaults to absent. `true` declares that this application
-  drives a live third-party production site: every test under it must carry
-  `@pytest.mark.production`, and a production-marked test that no declared application owns
-  is equally an error. Nothing in the framework names an application; a new production app
-  becomes visible to the guard by declaring itself.
-  **It is not an `AppConfig` field.** `tests/test_ci_production_exclusion.py` reads it
-  straight from the JSON — every environment file, so a `true` anywhere counts — because
-  `load_app_config` resolves only one environment and would sweep an unrecognised key into
-  `extra` unvalidated. The policy check validates it instead: a malformed file or a
-  non-boolean value fails the check rather than quietly dropping the application from it.
-- Any other key lands in `AppConfig.extra` for app-specific use (for example, an optional
-  `consent_selector` a site's cookie banner can be dismissed with). **Unknown keys are
-  accepted silently, not rejected** — a misspelling, or an invented key such as `timeout_ms`
-  instead of `action_timeout`, lands in `extra` and simply never takes effect. Check a new
-  key against `_KNOWN_KEYS` in `pwpf/core/app_config.py` before relying on it;
-  `ignore_https_errors` is the only key that fails loudly on a wrong type.
+- `production_target` — **this project's own key, not an `AppConfig` field.** `true` declares that
+  an application drives a live third-party production site: every test under it must carry
+  `@pytest.mark.production`, and a production-marked test that no declared application owns is
+  equally an error. `tests/test_ci_production_exclusion.py` reads it straight from the JSON —
+  every environment file, so a `true` anywhere counts — and fails on a malformed file or a
+  non-boolean value rather than quietly dropping the application from the check. Nothing in the
+  framework names an application; a new production app becomes visible to the guard by declaring
+  itself.
+- Any other key lands in `AppConfig.extra` for app-specific use (for example a
+  `consent_selector` for a cookie banner). **Unknown keys are accepted silently, not rejected** —
+  a misspelling such as `timeout_ms` for `action_timeout` lands in `extra` and simply never takes
+  effect.
 
 Example combining both layers:
 
@@ -324,7 +278,7 @@ pytest -n auto -q
 # Re-run only what failed last time
 pytest --lf
 
-# Framework self-tests only (fast; most need no browser)
+# This project's own policy and documentation tests (fast, no browser)
 pytest tests/test_*.py -q
 ```
 
@@ -332,8 +286,9 @@ Registered markers (`pytest.ini`): `smoke`, `ui`, `api`, `regression` (reserved 
 currently no test carries it), `production` (drives a live third-party site; excluded from every
 CI job, opt in locally as above), `scenario(id)` (the catalog scenario a test implements, also
 attached as an Allure label), `quarantined` (known-unstable; excluded from the blocking CI
-gates, run in a non-blocking job), and an auto-applied `app(name)` marker `pwpf/plugin.py` assigns
-based on each test's file path.
+gates, run in a non-blocking job), and an auto-applied `app(name)` marker the installed plugin
+assigns based on each test's file path. The plugin registers all of them itself, so
+`--strict-markers` holds even though this project declares them in `pytest.ini` too.
 
 ## Reporting and Failure Diagnostics
 
@@ -366,29 +321,23 @@ error / page error lines captured passively during the run.
 
 ## Architecture and Fixture Strategy
 
-Full detail, including the execution flow and the step-by-step guide for onboarding a new
-application, lives in [DESIGN.md](DESIGN.md). Summary of the fixture chain (all in `pwpf/plugin.py`
-unless noted):
+The fixture chain, the artifact lifecycle and the xdist guards are the framework's, and are
+documented in [its README](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/docs/framework-readme-draft.md). What matters here is the one end of the chain this
+project owns:
 
-| Fixture | Scope | Purpose |
-|---|---|---|
-| `playwright_context` | session | One Playwright driver per worker process |
-| `browser` | session | One browser process per worker, shared across its tests for launch speed |
-| `context` | function | A fresh, isolated `BrowserContext` per test — this is where test isolation lives |
-| `page` | function | A fresh `Page` per test; owns the entire trace/screenshot/video capture lifecycle in its own teardown |
-| `app_config` | session (per-app `tests/<app>/conftest.py`) | The one fixture a new application must define |
+| Fixture | Scope | Owner | Purpose |
+|---|---|---|---|
+| `playwright_context`, `browser` | session | framework | one driver and one browser per worker process |
+| `context`, `page` | function | framework | a fresh context and page per test; `page` owns the whole trace/screenshot/video capture lifecycle in its teardown |
+| `app_config` | session | **this project** | `tests/<app>/conftest.py` binds it to an application name — the one fixture a new application must define |
 
-This chain is intentionally short: one browser launch per worker (not per test, for speed), but a
-fresh context per test (so isolation doesn't depend on re-launching the browser). Under parallel
-execution, each `pytest-xdist` worker is a separate OS process with its own `browser` instance —
-there is no shared browser, context, or global mutable state between workers. The two places that
-*do* touch a file shared across workers (embedding failure screenshots into the HTML report, and
-clearing stale Allure results) are explicitly guarded to run only in the xdist master process,
-to avoid redundant work and a write race if every worker did it independently.
+One browser launch per worker, a fresh context per test, and each `pytest-xdist` worker is a
+separate process with its own browser: there is no shared browser, context or global mutable
+state between workers. Artifact paths are namespaced `<application>/<test_name>` and Allure
+results are UUID-named per test, so two tests cannot collide on a path even across workers.
 
-Artifact paths are namespaced by `<application>/<test_name>`, and Allure results are
-independently UUID-named per test, so two tests — even across different workers — can never
-collide on a file path.
+This project's own architecture — the application layout, the CI policy and the onboarding
+walkthrough — is in [DESIGN.md](DESIGN.md).
 
 ## Code Quality
 
@@ -410,59 +359,63 @@ detect-secrets scan --baseline .secrets.baseline
 
 ## Continuous Integration
 
-`.github/workflows/ci.yml` runs as seven jobs rather than one, so a pull request gets fast
-feedback without giving up full-suite and cross-browser coverage. The tag on each says which half
-of the repository it serves — framework, consumer, or both — and nothing about how it runs:
+`.github/workflows/ci.yml` runs as six jobs rather than one, so a pull request gets fast feedback
+without giving up full-suite and cross-browser coverage. The framework's own three jobs — lint and
+type check, its self-tests on 3.12 and 3.13, and the installed-package verification — run in
+[its repository](https://github.com/abhay-scaler/playwright-pytest-framework); this project gates the framework by pinning a tag, not by re-testing it.
 
-1. **Lint & Type Check** — *both* — Ruff, Black, mypy, and the documentation link checker. Every
-   trigger, before any job installs a browser.
-2. **Scenario Catalog** — *consumer* — `python -m pwpf.ai_testing.validate_catalog`. Every
-   trigger; static analysis, no pytest and no browser.
-3. **Installed Package** — *framework* — `python scripts/verify_installed_package.py`. Every
-   trigger; builds a real wheel, installs it into a clean virtualenv and runs a generated
-   consumer project from there, so the packaging guarantees are enforced rather than assumed.
-4. **PR Smoke** — *consumer* — framework self-tests plus `-m "smoke and not production"`,
-   Chromium only. Pull requests only, kept deliberately fast.
-5. **Regression** — *consumer* — the full suite, Chromium, `-n auto`. Push to `main`/`dev`,
-   nightly schedule, and manual dispatch.
-6. **Cross-Browser** — *consumer* — the full suite against Firefox and WebKit. Nightly, or on
-   demand via `workflow_dispatch` — not on every PR, since it roughly triples runtime.
-7. **Quarantined (non-blocking)** — *consumer* — `-m "quarantined and not production"` with
+1. **Lint & Type Check** — Ruff, Black, mypy, and the documentation link checker. Every trigger,
+   before any job installs a browser.
+2. **Scenario Catalog** — `python -m pwpf.ai_testing.validate_catalog`, from the framework's `ai`
+   extra. Every trigger; static analysis, no pytest and no browser.
+3. **PR Smoke** — this project's policy and documentation tests plus
+   `-m "smoke and not production and not quarantined"`, Chromium only. Pull requests only, kept
+   deliberately fast.
+4. **Regression** — the full suite, Chromium, `-n auto`. Push to `main`/`dev`, nightly schedule,
+   and manual dispatch.
+5. **Cross-Browser** — the full suite against Firefox and WebKit. Nightly, or on demand via
+   `workflow_dispatch` — not on every PR, since it roughly triples runtime.
+6. **Quarantined (non-blocking)** — `-m "quarantined and not production"` with
    `continue-on-error: true`: known-unstable tests still run and report, but gate nothing.
 
-Every pytest invocation in the workflow carries `-m "not production"`, so tests that drive a
-live third-party site are never collected in CI; `tests/test_ci_production_exclusion.py` fails
-if any invocation loses the exclusion. Every **blocking** invocation also excludes
-`quarantined`, which the non-blocking job runs instead;
-`tests/test_quarantine_policy.py` pins which tests those are. See [DESIGN.md](DESIGN.md) §8.
+Every pytest invocation in the workflow carries `-m "not production"`, so tests that drive a live
+third-party site are never collected in CI; `tests/test_ci_production_exclusion.py` fails if any
+invocation loses the exclusion. Every **blocking** invocation also excludes `quarantined`, which
+the non-blocking job runs instead; `tests/test_quarantine_policy.py` pins which tests those are.
+See [DESIGN.md](DESIGN.md) §8.
 
-Both pip and the Playwright browser binary are cached, the latter keyed on the exact pinned
-Playwright version so a dependency bump always installs fresh rather than risking a stale,
-incompatible cache. Every job uploads its `reports/`, `screenshots/`, `traces/`, and `videos/` as
-a build artifact unconditionally (`if: always()`), and emits a JUnit XML report alongside the
-HTML/Allure output for CI platforms that consume it natively.
+Both pip and the Playwright browser binary are cached. The browser cache is keyed on the
+Playwright version **the installed environment actually reports**, not on a line in a
+requirements file: Playwright now arrives transitively through the framework, and reading the
+version from the environment is the only way the key cannot silently disagree with what is
+installed. Every job uploads its `reports/`, `screenshots/`, `traces/` and `videos/`
+unconditionally (`if: always()`), and emits a JUnit XML report alongside the HTML/Allure output.
 
 ## Local-Only Overrides
 
 A contributor's machine may need a tweak the rest of the team doesn't — an unsupported browser
-build for their OS version, a different local port, and so on. The supported way to do this is to
-edit a tracked file (`conftest.py`, `pytest.ini`, etc.) locally and simply **not commit** that
-edit — `git status`/`git diff` will show it as an uncommitted local change.
+build for their OS version, a different local port, an editable checkout of the framework. The
+supported way is to make the change locally and simply **not commit** it — `git status`/`git diff`
+will show it as an uncommitted local change.
 
 - Prefer an environment variable or a per-app `config/*.json` entry over editing a shared file,
   whenever the override can be expressed that way.
-- Keep a genuinely necessary tracked-file edit small and easy to spot in a diff.
-- Never commit it, and don't let it change the framework's *default* behavior for anyone who
-  hasn't made the same local edit.
-- If more than one contributor needs the same workaround, that's a signal it should become a
-  real, documented, opt-in feature instead of everyone independently carrying the same local
-  diff.
+- Keep a genuinely necessary tracked-file edit (`pytest.ini`, `requirements.txt`) small and easy
+  to spot in a diff.
+- `pip install -e ../playwright-pytest-framework` is the override for working on the framework and
+  this project together. It belongs in your environment, never in `requirements.in`: CI must
+  install the pinned reference, and `tests/test_extraction_dry_run.py` fails if that stops being
+  what the file declares.
+- Never commit an override, and don't let it change default behaviour for anyone who hasn't made
+  the same local edit.
+- If more than one contributor needs the same workaround, that's a signal it should become a real,
+  documented, opt-in feature — in this project or in the framework, depending on where it belongs.
 
 ## Troubleshooting
 
-Each entry is tagged with where the behaviour lives — **framework** if it is the plugin's doing and
-would follow the distribution into any consumer project, **consumer** if it is about this
-repository's own configuration.
+Each entry is tagged with where the behaviour lives — **framework** if it is the installed
+plugin's doing and would follow the distribution into any project that uses it, **consumer** if it
+is about this repository's own configuration.
 
 **"Playwright browser could not be launched" (test skipped, not failed)** — *framework* — the
 browser binary isn't installed yet:
@@ -482,7 +435,8 @@ without changing the framework's shared, default behavior.
 (the framework reads it; which files it selects, `apps/<app>/config/*.json`, is the consumer's),
 then `HEADLESS`/`BROWSER`. Confirm your installed versions match `requirements.txt` exactly
 (`pip install -r requirements.txt` from a clean virtualenv) rather than whatever was already
-installed — that lock file is this repository's.
+installed — that lock file is this repository's, and it is also what pins the framework, so an
+editable checkout left over from local work is worth ruling out first.
 
 **A parallel-only failure (`pytest -n auto` fails, `pytest` alone passes)** — *both* — running
 in parallel is this repository's choice (xdist is the consumer's dependency), while the per-worker
@@ -491,32 +445,29 @@ log it leaves behind is the framework's: check `logs/gw*/framework.log` for that
 ## Known Limitations
 
 Honestly documented rather than hidden — these are deliberate absences, not oversights, and each
-has a clear extension path. Tagged by owner, because an absence in the framework is a different
-conversation from one in this project.
+has a clear extension path.
 
-**The framework's**
+**Inherited from the framework.** Its own absences — no authentication or session infrastructure,
+no test-data factories, one browser engine per run — are documented in
+[its README](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/docs/framework-readme-draft.md) and are that repository's to close. Two are worth naming here because
+they shape this project:
 
-- **No authentication/session infrastructure.** No current application needs a login, so none
-  exists. The intended shape (API-login, `storage_state`, cached per `pytest-xdist` worker) is
-  documented in [DESIGN.md](DESIGN.md), ready to build against the first application that needs it.
-- **No test-data factories.** No current application mutates server-side state. A worker-id- and
-  UUID-keyed factory convention is documented in `DESIGN.md` for when one does.
-- **Not published to a package index.** The distribution is real — `pyproject.toml` has its
-  `[project]` table, `pip install -e .` works, and CI builds the wheel and proves it installs and
-  runs in a clean virtualenv on every trigger ([Installed Package](#continuous-integration)) — but
-  it is consumed from a path or a Git reference, not from an index. The options and the
-  recommendation are in
+- **The framework is not published to a package index.** It is consumed as a pinned Git
+  reference. That needs no index, no credentials and no release automation, and `pip` records the
+  commit the tag resolved to; the trade-off is that a consumer needs git at install time. The
+  options and the recommendation are in
   [docs/framework-extraction-readiness.md](docs/framework-extraction-readiness.md) §4.
-- **Single browser engine per run.** `BROWSER` selects one engine for the whole run; the
-  cross-browser CI job achieves coverage via separate full-suite runs per engine, not multiple
-  engines interleaved within one invocation.
+- **The framework ships no `py.typed` marker at `v0.1.0`**, so mypy will not analyse it. This
+  project silences the resulting `import-untyped` reports with one override in `pyproject.toml`
+  rather than leaving 20 errors in the lint gate; the real fix is a marker in a framework release,
+  and the override comes out when one carries it.
 
 **This project's**
 
 - **Allure results are generated and uploaded, but not rendered or published in CI.** Viewing a
   report requires `allure serve`/`allure generate` run locally against the downloaded results.
 - **Ruff's rule set is intentionally narrow** (`E`, `F`, `I` — style and import order), not
-  `B`/`UP`/security-oriented rules. A framework repository would choose its own.
+  `B`/`UP`/security-oriented rules.
 - **No accessibility testing** (no `axe`-style integration) and **no containerized CI** — neither
   has been a concrete requirement for the current applications.
 - **Two locator modules share the same class name** (`HomePageLocators`, in two different

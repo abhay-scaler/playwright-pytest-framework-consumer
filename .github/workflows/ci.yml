@@ -30,6 +30,10 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
+      # requirements.txt now resolves the framework from its own repository at
+      # the pinned tag, so this step needs git and the network. Everything the
+      # framework itself needs - pytest, playwright, allure-pytest,
+      # pytest-rerunfailures - arrives with it and is pinned by the lock.
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Ruff
@@ -65,39 +69,14 @@ jobs:
       - name: Validate scenario catalogs and test mappings
         run: python -m pwpf.ai_testing.validate_catalog
 
-  # The packaging guarantees, enforced rather than asserted:
-  # scripts/verify_installed_package.py builds a real wheel, reads its archive
-  # manifest, installs it with its declared dependencies into a clean
-  # virtualenv, generates a separate consumer project and runs everything from
-  # there with this source tree nowhere on the path. Until this job existed the
-  # script was only ever run by hand, so a pyproject.toml edit could break the
-  # distribution and every other job would still pass.
+  # PR gate. Deliberately narrow: this repository's own policy and
+  # documentation tests (fast, no browser) + the smoke suite (Chromium only).
+  # Keeps PR feedback quick; full coverage runs on merge and nightly instead.
   #
-  # Nothing is installed first on purpose: the script itself imports only the
-  # standard library, and the whole point is that the wheel's own metadata has
-  # to be sufficient to install and run the plugin. It builds what it needs and
-  # consumes no other job's output, so it can run alone in a fresh environment.
-  # No continue-on-error either - a wheel that does not install is a broken
-  # release, not a warning.
-  installed-package:
-    name: Installed Package
-    needs: lint-and-type-check
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          # The dependencies this job resolves are the distribution's own, so
-          # the cache follows the file that declares them.
-          cache-dependency-path: pyproject.toml
-      - name: Verify the installed distribution
-        run: python scripts/verify_installed_package.py
-
-  # PR gate. Deliberately narrow: framework self-tests (fast, no browser) +
-  # the smoke suite (Chromium only). Keeps PR feedback quick; full coverage
-  # runs on merge and nightly instead.
+  # The framework's self-tests used to be the fast half. They moved to the
+  # framework repository with the package, where its own CI runs them on every
+  # interpreter the distribution supports - this project gates the framework by
+  # pinning a tag, not by re-testing it.
   pr-smoke:
     name: PR Smoke (Chromium)
     if: github.event_name == 'pull_request'
@@ -112,9 +91,15 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Resolve pinned Playwright version
+      # Playwright arrives transitively, through the pinned framework, so its
+      # version is read from the environment that will run the browser rather
+      # than grepped out of a requirements file that no longer declares it.
+      # Keyed on the resolved version, a cache entry can never be reused for an
+      # incompatible browser build.
+      - name: Resolve the installed Playwright version
         id: playwright-version
-        run: echo "version=$(grep -oP '(?<=^playwright==)[0-9.]+' requirements.txt)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -125,7 +110,7 @@ jobs:
           key: playwright-${{ runner.os }}-chromium-${{ steps.playwright-version.outputs.version }}
       - name: Install Playwright browser (Chromium)
         run: python -m playwright install --with-deps chromium
-      - name: Framework self-tests
+      - name: Repository policy tests
         env:
           CI: true
           HEADLESS: true
@@ -137,7 +122,7 @@ jobs:
         # marker enforces anything by itself - these commands do, and
         # tests/test_ci_production_exclusion.py and tests/test_quarantine_policy.py fail
         # if an invocation loses either exclusion.
-        run: pytest tests/test_*.py -m "not production and not quarantined" --junitxml=reports/junit-framework.xml
+        run: pytest tests/test_*.py -m "not production and not quarantined" --junitxml=reports/junit-policy.xml
       - name: Smoke suite
         env:
           CI: true
@@ -171,9 +156,15 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Resolve pinned Playwright version
+      # Playwright arrives transitively, through the pinned framework, so its
+      # version is read from the environment that will run the browser rather
+      # than grepped out of a requirements file that no longer declares it.
+      # Keyed on the resolved version, a cache entry can never be reused for an
+      # incompatible browser build.
+      - name: Resolve the installed Playwright version
         id: playwright-version
-        run: echo "version=$(grep -oP '(?<=^playwright==)[0-9.]+' requirements.txt)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -223,9 +214,15 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Resolve pinned Playwright version
+      # Playwright arrives transitively, through the pinned framework, so its
+      # version is read from the environment that will run the browser rather
+      # than grepped out of a requirements file that no longer declares it.
+      # Keyed on the resolved version, a cache entry can never be reused for an
+      # incompatible browser build.
+      - name: Resolve the installed Playwright version
         id: playwright-version
-        run: echo "version=$(grep -oP '(?<=^playwright==)[0-9.]+' requirements.txt)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -272,9 +269,15 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Resolve pinned Playwright version
+      # Playwright arrives transitively, through the pinned framework, so its
+      # version is read from the environment that will run the browser rather
+      # than grepped out of a requirements file that no longer declares it.
+      # Keyed on the resolved version, a cache entry can never be reused for an
+      # incompatible browser build.
+      - name: Resolve the installed Playwright version
         id: playwright-version
-        run: echo "version=$(grep -oP '(?<=^playwright==)[0-9.]+' requirements.txt)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:

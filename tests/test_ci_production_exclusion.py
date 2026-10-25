@@ -45,7 +45,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from pwpf.config.paths import project_root
 
 BASE_DIR = project_root()
@@ -397,12 +396,24 @@ def test_resolution_does_not_import_the_plugin_or_its_dependencies():
 
 
 def test_the_rule_is_checked_against_an_installed_package_outside_the_project(tmp_path):
-    """The post-extraction shape: a consumer project with no `pwpf/` of its own,
-    and the framework resolved from somewhere else entirely. The path-based
-    version of this guard could not run here at all."""
+    """The post-extraction shape, which is now this project's actual shape: a
+    consumer with no `pwpf/` of its own and the framework resolved from
+    somewhere else entirely. The path-based version of this guard could not run
+    here at all.
+
+    The package is copied from wherever it is *installed*, found the same way
+    the guard finds it. Before extraction this read `<project root>/pwpf`,
+    which stopped existing when the framework moved to its own repository -
+    the copy is the installed distribution now, which is what the test was
+    always really about.
+    """
+    installed = importlib.util.find_spec("pwpf")
+    assert (
+        installed is not None and installed.submodule_search_locations
+    ), "the framework must be installed for this test to have anything to copy"
     site_packages = tmp_path / "site-packages"
     shutil.copytree(
-        BASE_DIR / "pwpf",
+        Path(list(installed.submodule_search_locations)[0]),
         site_packages / "pwpf",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )

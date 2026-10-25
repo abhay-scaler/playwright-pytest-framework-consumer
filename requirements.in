@@ -1,9 +1,31 @@
-pytest>=8.0.0
-pytest-html>=4.0.0
-pytest-rerunfailures>=14.0.0
+# The consumer's test-runtime dependencies. Regenerate the pinned lock with:
+#   pip-compile --output-file=requirements.txt --strip-extras requirements.in
+#
+# The framework, pinned to an immutable tag in its own repository. Everything
+# it needs - pytest, playwright, allure-pytest, pytest-rerunfailures - arrives
+# through it and is pinned by the lock below, so this file no longer repeats
+# the framework's own dependency floors. `[report]` is what makes the --html in
+# pytest.ini work (pytest rejects an option no installed plugin defines, before
+# collection), and `[ai]` brings the scenario-catalog validator's PyYAML and
+# jsonschema so the catalog self-tests run instead of skipping.
+#
+# Rolling back is a one-line change of the ref.
+#
+# One caveat, measured rather than assumed: `pip-compile` copies this VCS
+# requirement into the lock *as written*, with the tag - it does not rewrite it
+# to the commit the tag resolves to, the way `pip freeze` does. The tag is
+# immutable by policy (it is never moved or re-pointed), and the commit it
+# resolved to when this lock was generated is recorded here so the pairing
+# survives in version control:
+#
+#   v0.1.0 -> 215065ce1425e45f53db039e7a0d0d306078b560
+playwright-pytest-framework[ai,report] @ git+https://github.com/abhay-scaler/playwright-pytest-framework@v0.1.0
+
+# Genuinely this project's own: parallel execution is a choice about how this
+# suite runs, so the framework does not declare it, even optionally.
 pytest-xdist>=3.0.0
-playwright>=1.48.0
+
+# Lint and type tooling for this repository.
 black>=24.0.0
 ruff>=0.6.0
 mypy>=1.11.0
-allure-pytest>=2.0.0

@@ -32,7 +32,7 @@ Review for, in this order:
 6. **Determinism** — fixed waits, hard-coded volatile data, ordering assumptions, dependence on
    another test's state, fixture scope wider than it should be.
 7. **Isolation and cleanup** — what state does the test leave behind, and is that declared?
-8. **Shared-framework blast radius** — does the diff touch `pwpf/`, `pytest.ini`,
+8. **Shared blast radius** — does the diff touch the framework pin, `pytest.ini`,
    `.github/workflows/ci.yml` or `tests/test_ci_production_exclusion.py`? Each such change needs
    its own justification, and weakening the production exclusion is never acceptable.
 9. **Validation evidence** — did the author show real command output? Anything claimed but not

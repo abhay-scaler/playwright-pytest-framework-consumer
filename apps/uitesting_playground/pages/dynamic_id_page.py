@@ -1,7 +1,7 @@
 import allure
+from pwpf.core.base_page import BasePage
 
 from apps.uitesting_playground.locators.dynamic_id_page_locators import DynamicIdPageLocators
-from pwpf.core.base_page import BasePage
 
 
 class DynamicIdPage(BasePage):
