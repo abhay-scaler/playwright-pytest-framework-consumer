@@ -9,6 +9,12 @@ ordered, reviewable sequence with acceptance criteria, and surface the decisions
 
 Measured on `dev` at `abdeb066` (PR #19's merge commit), working tree clean.
 
+**Carried out.** The extraction this document proposes has been performed: the framework is at
+[abhay-scaler/playwright-pytest-framework](https://github.com/abhay-scaler/playwright-pytest-framework)
+at tag `v0.1.0`, this repository consumes it as a pinned dependency, and the three links below that
+pointed at files which have since moved are now prose or pinned URLs. Kept as the record of what
+was decided and why.
+
 Legend: **[V]** verified by a command here · **[R]** recommended, reasons given · **[?]** needs a
 human decision before extraction can start.
 
@@ -104,7 +110,7 @@ either repository currently pins anything.
 consumer's — `pytest`, `playwright`, `allure-pytest`, `pytest-rerunfailures` — alongside the two
 that genuinely are (`pytest-html`, `pytest-xdist`) and the lint toolchain. The framework itself is
 not a dependency at all: it is on `sys.path` because it is in the working directory, and
-[conftest.py](../conftest.py) loads `pwpf.plugin` from the source tree. That is the implicit
+the root `conftest.py` loaded `pwpf.plugin` from the source tree. That is the implicit
 dependency extraction has to make explicit.
 
 ### 3.2 Pinning mechanism — rehearsed, not assumed [V]
@@ -182,7 +188,7 @@ early buys nothing — the stage is nine lines in two files.
 
 ### 4.2 The draft's `> **Draft.**` block [V]
 
-[framework-readme-draft.md](framework-readme-draft.md) lines 11–18 are a block quote holding the
+[framework-readme-draft.md](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/docs/framework-readme-draft.md) lines 11–18 are a block quote holding the
 only three links in the file that point into this repository:
 `documentation-split-plan.md`, `../DESIGN.md`, `../README.md`.
 
@@ -236,7 +242,8 @@ consumer-targeted boundary crossings of plan §2.2 (`../pytest.ini`, `../require
 
 ### 5.1 Validating against an installed, pinned artifact [V] → **[R]**
 
-[scripts/verify_installed_package.py](../scripts/verify_installed_package.py) needs **no change**:
+[scripts/verify_installed_package.py](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/scripts/verify_installed_package.py) needs **no
+change**:
 it builds and interrogates the framework's own wheel from its own repository root (`REPO_ROOT`,
 `build_wheel` at lines 166–197, `source_package_members` at 232, globbing `REPO_ROOT/pwpf` at 244), and
 it moves to the framework repository with the Installed Package job. Building from source is the
@@ -281,7 +288,7 @@ still collects `test_no_committed_scenario_lets_a_live_site_gate_ci`, and its si
 
 ### 5.3 Root `conftest.py` [V]
 
-[conftest.py](../conftest.py) is a docstring and one line, `pytest_plugins = ["pwpf.plugin"]`. It
+The root `conftest.py` was a docstring and one line, `pytest_plugins = ["pwpf.plugin"]`. It
 is **deleted** at extraction: the entry point supplies the plugin, and the dry run's consumer has
 no conftest and still receives every fixture and marker (readiness §5.6) [V]. It is also the first
 rollback lever in readiness §6 — restoring it loads the plugin directly — so it is deleted in the

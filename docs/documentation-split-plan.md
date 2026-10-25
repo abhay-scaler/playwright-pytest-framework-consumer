@@ -220,7 +220,8 @@ consumer policy and stay. That is a **split within one document**, scheduled in 
 ### 4.2 Settled at Stage 3
 
 Both were deferred until the framework draft existed and the shape was visible. It now does
-([framework-readme-draft.md](framework-readme-draft.md)), so:
+([framework-readme-draft.md](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/docs/framework-readme-draft.md), at the tag this
+project pins; it became the framework repository's `README.md` at extraction), so:
 
 **5. The framework repository publishes a README and nothing else, to begin with. [R]**
 The draft carries the substance of DESIGN §§1, 3–7, 9 and 12 in **303 lines** [V] — the install

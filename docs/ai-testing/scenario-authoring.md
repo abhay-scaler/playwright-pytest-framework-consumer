@@ -5,7 +5,8 @@ in a review and in a report. It is not executable. The executable truth is alway
 named in the scenario's `automation.test` field.
 
 Template: [ai_testing/templates/scenario_template.yaml](../../ai_testing/templates/scenario_template.yaml).
-Schema: [pwpf/ai_testing/schemas/scenario.schema.json](../../pwpf/ai_testing/schemas/scenario.schema.json).
+Schema: [scenario.schema.json](https://github.com/abhay-scaler/playwright-pytest-framework/blob/v0.1.0/pwpf/ai_testing/schemas/scenario.schema.json), in the
+framework repository at the `v0.1.0` tag this project pins.
 Every value in the template is illustrative, and its example scenarios are not verified Myntra
 behaviour.
 
@@ -126,8 +127,8 @@ invocation by design.
 ## Validation
 
 ```bash
-pip install -r requirements-ai.txt        # once: PyYAML + jsonschema, pinned apart from the
-                                          # test-runtime lock that every CI test job installs
+pip install -r requirements.txt           # the framework's [ai] extra: PyYAML + jsonschema,
+                                          # in the lock every CI test job installs
 python -m pwpf.ai_testing.validate_catalog     # every catalog under apps/*/scenarios/
 python -m pwpf.ai_testing.validate_catalog --root .
 ```
